@@ -1,5 +1,5 @@
+[![crates.io](https://img.shields.io/crates/v/libunwind-rs.svg)](https://crates.io/crates/libunwind-rs)
 # libunwind-rs
-
 This crate provides high-level bindings for the [libunwind] library.
 
 Supported targets:
