@@ -1,8 +1,15 @@
 [package]
 name = "libunwind-rs"
 version = "0.1.0"
-authors = ["fedotoff <fedotoff@ispras.ru>"]
+authors = ["Andrey Fedotov <fedotoff@ispras.ru>"]
 edition = "2018"
+description = "High-level bindings for the libunwind library"
+readme = "README.md"
+keywords = [ "stackunwind", "backtrace","stacktrace","coredump"]
+repository = "https://github.com/xcoldhandsx/libunwind-rs.git"
+homepage = "https://github.com/xcoldhandsx/libunwind-rs.git"
+license = "MIT"
+exclude = ["/data"]
 
 [dependencies]
 libunwind-sys = "0.3.0"
