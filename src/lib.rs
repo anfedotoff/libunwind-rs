@@ -13,7 +13,7 @@ use foreign_types::{foreign_type, ForeignType};
 use std::path::Path;
 use std::ffi::CString;
 use std::mem::MaybeUninit;
-use libc::{c_void, c_char};
+use libc::{c_void, c_char, c_ulong};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
@@ -140,10 +140,10 @@ impl CoredumpState {
     /// * `file_path` - path to executable
     ///
     /// * `vaddr` - address to map
-    pub fn load_file_at_vaddr(&mut self, file_path: &Path, vaddr: u64) {
+    pub fn load_file_at_vaddr(&mut self, file_path: &Path, vaddr: usize) {
         unsafe {
             let file_path = CString::new(file_path.to_str().unwrap()).unwrap();
-            _UCD_add_backing_file_at_vaddr(self.0.as_ptr(), vaddr, file_path.as_ptr());
+            _UCD_add_backing_file_at_vaddr(self.0.as_ptr(), vaddr as c_ulong, file_path.as_ptr());
         }
     }
 
@@ -291,12 +291,12 @@ impl Cursor {
     /// # Arguments
     ///
     /// * `id`  - register's identifier
-    pub fn register(&mut self, id: i32) -> Result<u64, Error> {
+    pub fn register(&mut self, id: i32) -> Result<usize, Error> {
         unsafe {
             let mut value = 0;
             let ret = unw_get_reg(&self.0 as *const _ as *mut _, id, &mut value);
             if ret == (Error::Succsess as i32) {
-                Ok(value)
+                Ok(value as usize)
             } else {
                 Err(FromPrimitive::from_i32(ret).unwrap())
             }
@@ -304,12 +304,12 @@ impl Cursor {
     }
     
     /// Method returns instructions pointer value 
-    pub fn ip(&mut self) ->  Result<u64, Error> {
+    pub fn ip(&mut self) ->  Result<usize, Error> {
         unsafe {
             let mut value = 0;
             let ret = unw_get_reg(&self.0 as *const _ as *mut _, libunwind_sys::UNW_TDEP_IP as i32, &mut value);
             if ret == (Error::Succsess as i32) {
-                Ok(value)
+                Ok(value as usize)
             } else {
                 Err(FromPrimitive::from_i32(ret).unwrap())
             }
@@ -317,12 +317,12 @@ impl Cursor {
     }
     
     /// Method returns stack pointer value 
-    pub fn sp(&mut self) ->  Result<u64, Error> {
+    pub fn sp(&mut self) ->  Result<usize, Error> {
         unsafe {
             let mut value = 0;
             let ret = unw_get_reg(&self.0 as *const _ as *mut _, libunwind_sys::UNW_TDEP_SP as i32, &mut value);
             if ret == (Error::Succsess as i32) {
-                Ok(value)
+                Ok(value as usize)
             } else {
                 Err(FromPrimitive::from_i32(ret).unwrap())
             }
@@ -387,8 +387,8 @@ mod tests {
         test_callstack_path_buf.push("data/test_callstack");
         let mut core_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         core_path_buf.push("data/core.test_callstack");
-        let test_callstack_start:u64 = 0x400000;
-        let libc_start:u64 = 0x00007f9ac7468000;
+        let test_callstack_start:usize = 0x400000;
+        let libc_start:usize = 0x00007f9ac7468000;
    
         let mut  state = CoredumpState::new(&core_path_buf).unwrap();
         state.load_file_at_vaddr(&test_callstack_path_buf, test_callstack_start);
@@ -421,8 +421,8 @@ mod tests {
         test_heap_path_buf.push("data/test_heapError");
         let mut core_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         core_path_buf.push("data/core.test_heapError");
-        let test_heap_start:u64 = 0x000055b7b218c000;
-        let libc_start:u64 = 0x00007f90e058b000;
+        let test_heap_start:usize = 0x000055b7b218c000;
+        let libc_start:usize = 0x00007f90e058b000;
         
         let mut  state = CoredumpState::new(&core_path_buf).unwrap();
         state.load_file_at_vaddr(&test_heap_path_buf, test_heap_start);
@@ -452,8 +452,8 @@ mod tests {
         test_canary_path_buf.push("data/test_canary");
         let mut core_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         core_path_buf.push("data/core.test_canary");
-        let test_canary_start:u64 = 0x0000558672376000;
-        let libc_start:u64 = 0x00007fc14b336000;
+        let test_canary_start:usize = 0x0000558672376000;
+        let libc_start:usize = 0x00007fc14b336000;
 
         let mut  state = CoredumpState::new(&core_path_buf).unwrap();
         state.load_file_at_vaddr(&test_canary_path_buf, test_canary_start);
