@@ -233,6 +233,33 @@ impl Cursor {
             }
         }
     }
+
+    /// Method constructs cursor for local  unwinding.  
+    /// # Arguments
+    ///
+    /// * `f` - function to work with local cursor 
+    pub fn local<F, T>(f: F) -> Result<T, Error>
+    where
+        F: FnOnce(Cursor) -> Result<T, Error>,
+    {
+        unsafe {
+            let mut context = MaybeUninit::uninit();
+            let ret = unw_getcontext(context.as_mut_ptr());
+            if ret != (Error::Succsess as i32) {
+                return   Err(FromPrimitive::from_i32(ret).unwrap());
+            }
+            let mut context = context.assume_init();
+
+            let mut cursor = MaybeUninit::uninit();
+            let ret = unw_init_local(cursor.as_mut_ptr(), &mut context);
+            if ret != (Error::Succsess as i32) {
+                return   Err(FromPrimitive::from_i32(ret).unwrap());
+            }
+
+            f(Cursor(cursor.assume_init()))
+        }
+    }
+
     /// Method executes step on cursor.  
     /// # Return
     ///
@@ -498,6 +525,27 @@ mod tests {
         assert!(backtrace.contains("second"), true);
         assert!(backtrace.contains("third"), true);
         child.kill().unwrap();
+    }
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_local_unwind() {
+        let backtrace = Cursor::local(|mut cursor| {
+
+        let mut backtrace = String::new();
+            loop { 
+                let  ip = cursor.ip().unwrap();
+                let  name = cursor.proc_name().unwrap();
+                backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
+                let  ret = cursor.step().unwrap();
+                if ret == false  {
+                    break;
+                }
+            }
+        Ok(backtrace)
+        }).unwrap();
+        
+        assert!(backtrace.contains("__rust_maybe_catch_panic"), true);
+        assert!(backtrace.contains("start_thread"), true);
     }
 }
 
