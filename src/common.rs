@@ -109,7 +109,7 @@ foreign_type! {
 }
 
 impl CoredumpState {
-    /// Method constructs method constructs new CoredumpState from path to core file.  
+    /// Method constructs new CoredumpState from path to core file.  
     /// # Arguments
     ///
     /// * `accessors` - Bunch of Accessors functions (Ptrace, Coredump)
@@ -136,13 +136,37 @@ impl CoredumpState {
     pub fn load_file_at_vaddr(&mut self, file_path: &Path, vaddr: u64) {
         unsafe {
             let file_path = CString::new(file_path.to_str().unwrap()).unwrap();
-            _UCD_add_backing_file_at_vaddr(&mut *(self as *const _ as  *mut _ ), vaddr, file_path.as_ptr());
+            _UCD_add_backing_file_at_vaddr(self.0.as_ptr(), vaddr, file_path.as_ptr());
         }
     }
 
 }
 
 //TODO Ptrace state. cursor methods local, remote
+foreign_type! { 
+    ///This state is used by accessors 
+    pub unsafe type PtraceState {
+        type CType = libc::c_void;
+        fn drop = _UPT_destroy;
+    }
+}
+
+impl PtraceState {
+    /// Method constructs constructs new CoredumpState from path to core file.  
+    /// # Arguments
+    ///
+    /// * `pid` - Pid for remote proccess
+    pub fn new(pid: u32) -> Result<PtraceState, Error> {
+         unsafe {
+            let ptr = _UPT_create(pid as _);
+            if ptr.is_null() {
+                Err(Error::NoMem)
+            } else {
+                Ok(PtraceState::from_ptr(ptr))
+            }
+        }
+    }
+}
 
 ///Information about called procedure
 #[derive(Clone, Copy)]
@@ -165,7 +189,6 @@ impl ProcInfo {
 
 #[derive(Clone)]
 pub struct Cursor(unw_cursor_t);
-
 impl Cursor {
     /// Method constructs cursor for coredump unwinding.  
     /// # Arguments
@@ -178,17 +201,38 @@ impl Cursor {
             let mut cursor = MaybeUninit::uninit();
             let ret = unw_init_remote(
                 cursor.as_mut_ptr(),
-                &mut *(address_space as *const _ as  *mut _),
-                state as *const CoredumpState  as *mut c_void,
+                address_space.0.as_ptr(),
+                state.0.as_ptr() as *mut c_void,
             );
             if ret == (Error::Succsess as i32) {
                 Ok(Cursor(cursor.assume_init()))
-            } else {
+         } else {
                 Err(FromPrimitive::from_i32(ret).unwrap())
             }
         }
     }
-
+    
+    /// Method constructs cursor for remote  unwinding.  
+    /// # Arguments
+    ///
+    /// * `address_space` - configured AddressSpace 
+    ///
+    /// * `state` - Configured CoredumpState
+    pub fn ptrace(address_space: &mut AddressSpace, state: &PtraceState) -> Result<Cursor, Error> {
+        unsafe {
+            let mut cursor = MaybeUninit::uninit();
+            let ret = unw_init_remote(
+                cursor.as_mut_ptr(),
+                address_space.0.as_ptr(),
+                state.0.as_ptr() as *mut c_void,
+            );
+            if ret == (Error::Succsess as i32) {
+                Ok(Cursor(cursor.assume_init()))
+         } else {
+                Err(FromPrimitive::from_i32(ret).unwrap())
+            }
+        }
+    }
     /// Method executes step on cursor.  
     /// # Return
     ///
@@ -276,7 +320,8 @@ impl Cursor {
             let mut offset = 0;
             let ret = unw_get_proc_name(& self.0 as *const _ as * mut _, name_vec.as_mut_ptr() as * mut c_char, name_vec.len(), &mut offset);
             if ret == (Error::Succsess as i32) {
-                Ok(String::from_utf8_lossy(&name_vec).into_owned())
+                let name = CStr::from_ptr(name_vec.as_mut_ptr());
+                Ok(name.to_str().unwrap().to_string())
             } else {
                 Err(FromPrimitive::from_i32(ret).unwrap())
             }
@@ -316,35 +361,143 @@ mod tests {
         state.load_file_at_vaddr(&test_callstack_path_buf, test_callstack_start);
         state.load_file_at_vaddr(&libc_path_buf, libc_start);
         let mut address_space = AddressSpace::new(Accessors::coredump(), Byteorder::Default).unwrap();
-        let cursor = Cursor::coredump(&mut address_space, &state).unwrap();
-         /* unsafe {
-              let asp = unw_create_addr_space(&mut _UCD_accessors ,0);
-              let ui: * mut UCD_info = _UCD_create(core_path.as_ptr());
-              let mut c  = MaybeUninit::uninit();
->>            let mut ret = unw_init_remote(c.as_mut_ptr(),asp,ui as * mut libc::c_void );
-              _UCD_add_backing_file_at_vaddr(ui, test_callstack_start, test_callstack_path.as_ptr());
-  
-              _UCD_add_backing_file_at_vaddr(ui, libc_start, libc_path.as_ptr());
-             let mut ip: unw_word_t = 0;
-             let mut backtrace = String::new();
-             loop {
-                unw_get_reg(c.as_mut_ptr(), UNW_TDEP_IP as ::std::os::raw::c_int, &mut ip);
-                let mut off  = MaybeUninit::uninit();
-                let mut name_vec:Vec<c_char> = vec![0;64];
-                unw_get_proc_name(c.as_mut_ptr(), name_vec.as_mut_ptr(),64, off.as_mut_ptr());
-                let name = CStr::from_ptr(name_vec.as_mut_ptr());
-                backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name.to_str().unwrap()));
-                ret = unw_step(c.as_mut_ptr());
-                if ret <= 0 {
+        let mut  cursor = Cursor::coredump(&mut address_space, &state).unwrap();
+        
+        let mut backtrace = String::new();
+        loop { 
+            let  ip = cursor.ip().unwrap();
+            let  name = cursor.proc_name().unwrap();
+            backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
+            let  ret = cursor.step().unwrap();
+                if ret == false  {
                     break;
                 }
-             }
-             assert!(backtrace.contains("main"), true);
-             assert!(backtrace.contains("first"), true);
-             assert!(backtrace.contains("second"), true);
-             assert!(backtrace.contains("third"), true);
-          }*/
+        }
+        assert!(backtrace.contains("main"), true);
+        assert!(backtrace.contains("first"), true);
+        assert!(backtrace.contains("second"), true);
+        assert!(backtrace.contains("third"), true);
     }
 
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_core_unwind_heap_error() {
+        let mut libc_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        libc_path_buf.push("data/libc-2.23.so");
+        let mut test_heap_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_heap_path_buf.push("data/test_heapError");
+        let mut core_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        core_path_buf.push("data/core.test_heapError");
+        let test_heap_start:u64 = 0x000055b7b218c000;
+        let libc_start:u64 = 0x00007f90e058b000;
+        
+        let mut  state = CoredumpState::new(&core_path_buf).unwrap();
+        state.load_file_at_vaddr(&test_heap_path_buf, test_heap_start);
+        state.load_file_at_vaddr(&libc_path_buf, libc_start);
+        let mut address_space = AddressSpace::new(Accessors::coredump(), Byteorder::Default).unwrap();
+        let mut  cursor = Cursor::coredump(&mut address_space, &state).unwrap();
+        
+        let mut backtrace = String::new();
+        loop { 
+            let  ip = cursor.ip().unwrap();
+            let  name = cursor.proc_name().unwrap();
+            backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
+            let  ret = cursor.step().unwrap();
+            if ret == false  {
+                break;
+            }
+        }   
+        assert!(backtrace.contains("main"), true);
+        assert!(backtrace.contains("cfree"), true);
+    }
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_core_unwind_canary() {
+        let mut libc_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        libc_path_buf.push("data/libc-2.23.so");
+        let mut test_canary_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_canary_path_buf.push("data/test_canary");
+        let mut core_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        core_path_buf.push("data/core.test_canary");
+        let test_canary_start:u64 = 0x0000558672376000;
+        let libc_start:u64 = 0x00007fc14b336000;
+
+        let mut  state = CoredumpState::new(&core_path_buf).unwrap();
+        state.load_file_at_vaddr(&test_canary_path_buf, test_canary_start);
+        state.load_file_at_vaddr(&libc_path_buf, libc_start);
+        let mut address_space = AddressSpace::new(Accessors::coredump(), Byteorder::Default).unwrap();
+        let mut  cursor = Cursor::coredump(&mut address_space, &state).unwrap();
+        
+        let mut backtrace = String::new();
+        loop { 
+            let  ip = cursor.ip().unwrap();
+            let  name = cursor.proc_name().unwrap();
+            backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
+            let  ret = cursor.step().unwrap();
+            if ret == false  {
+                break;
+            }
+        }   
+        assert!(backtrace.contains("main"), true);
+        assert!(backtrace.contains("fortify_fail"), true);
+    }
+    
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_remote_unwind() {
+        use std::process::Command;
+        use libc::c_void;
+        use std::ptr;
+        use std::thread;
+        use std::time::Duration;
+        use std::io;
+        
+        let mut test_callstack_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_callstack_path_buf.push("data/test_callstack_remote");
+        let mut child = Command::new(test_callstack_path_buf.to_str().unwrap())
+            .spawn()
+            .expect("failed to execute child");
+            thread::sleep(Duration::from_millis(10));
+        unsafe {
+            let ret = libc::ptrace(
+            libc::PTRACE_ATTACH,
+            child.id() as libc::pid_t,
+            ptr::null_mut::<c_void>(),
+            ptr::null_mut::<c_void>(),
+            );
+            if ret != 0 {
+                panic!("{}", io::Error::last_os_error());
+            }
+            loop {
+                let mut status = 0;
+                let ret = libc::waitpid(child.id() as libc::pid_t, &mut status, 0);
+                if ret < 0 {
+                    panic!("{}", io::Error::last_os_error());
+                }
+                if libc::WIFSTOPPED(status) {
+                    break;
+                }
+            }
+        }
+        let state = PtraceState::new(child.id()).unwrap();
+        let mut address_space = AddressSpace::new(Accessors::ptrace(), Byteorder::Default).unwrap();
+        let mut  cursor = Cursor::ptrace(&mut address_space, &state).unwrap();
+        
+        let mut backtrace = String::new();
+        loop { 
+            let  ip = cursor.ip().unwrap();
+            let  name = cursor.proc_name().unwrap();
+            backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
+            let  ret = cursor.step().unwrap();
+            if ret == false  {
+                break;
+            }
+        }   
+        assert!(backtrace.contains("main"), true);
+        assert!(backtrace.contains("first"), true);
+        assert!(backtrace.contains("second"), true);
+        assert!(backtrace.contains("third"), true);
+        child.kill().unwrap();
+    }
 }
 
