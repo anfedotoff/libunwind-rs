@@ -146,7 +146,27 @@ impl CoredumpState {
             _UCD_add_backing_file_at_vaddr(self.0.as_ptr(), vaddr as c_ulong, file_path.as_ptr());
         }
     }
-
+    /// Method returns current thread id
+    pub fn pid(&mut self) -> i32 {
+        unsafe {
+            _UCD_get_pid(self.0.as_ptr())
+         }
+    }
+    /// Method returns  the number of threads 
+    pub fn num_threads(&mut self) -> i32 {
+        unsafe {
+            _UCD_get_num_threads(self.0.as_ptr())
+         }
+    }
+    /// Method selects thread by provided thread id
+    /// # Arguments
+    ///
+    /// * `id` - thread identifier
+    pub fn select_thread(&mut self, id : i32) {
+        unsafe {
+            _UCD_select_thread(self.0.as_ptr(), id);
+        }
+    }
 }
 
 foreign_type! { 
