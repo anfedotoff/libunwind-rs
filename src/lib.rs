@@ -167,6 +167,24 @@ impl CoredumpState {
             _UCD_select_thread(self.0.as_ptr(), id);
         }
     }
+
+    /// Method gets value for memory address
+    /// # Arguments
+    ///
+    /// * `asp` - AddressSpace struct
+    /// 
+    /// * `address` - memory address to access
+    pub fn access_mem(&mut self, asp: &AddressSpace, address: usize) -> Result<usize, Error> {
+        unsafe {
+            let mut val: unw_word_t = 0;
+            let ret = _UCD_access_mem(asp.0.as_ptr(), address as unw_word_t, &mut val, 0, self.0.as_ptr() as * mut libc::c_void);
+            if ret == (Error::Succsess as i32) {
+                Ok(val as usize)
+            } else {
+                Err(FromPrimitive::from_i32(ret).unwrap())
+            }
+        }
+    }
 }
 
 foreign_type! { 
@@ -419,6 +437,10 @@ mod tests {
         let mut backtrace = String::new();
         loop { 
             let  ip = cursor.ip().unwrap();
+            let sp = cursor.sp().unwrap();
+            if let Err(_e) = state.access_mem(&address_space, sp) {
+                assert!(false);
+            }
             let  name = cursor.proc_name().unwrap();
             backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
             let  ret = cursor.step().unwrap();
@@ -453,6 +475,10 @@ mod tests {
         let mut backtrace = String::new();
         loop { 
             let  ip = cursor.ip().unwrap();
+            let sp = cursor.sp().unwrap();
+            if let Err(_e) = state.access_mem(&address_space, sp) {
+                assert!(false);
+            }
             let  name = cursor.proc_name().unwrap();
             backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
             let  ret = cursor.step().unwrap();
@@ -484,6 +510,10 @@ mod tests {
         let mut backtrace = String::new();
         loop { 
             let  ip = cursor.ip().unwrap();
+            let sp = cursor.sp().unwrap();
+            if let Err(_e) = state.access_mem(&address_space, sp) {
+                assert!(false);
+            }
             let  name = cursor.proc_name().unwrap();
             backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
             let  ret = cursor.step().unwrap();
