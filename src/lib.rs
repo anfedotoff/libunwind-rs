@@ -61,6 +61,7 @@ pub struct Accessors(unw_accessors_t);
 
 impl Accessors {
     /// Method returns Accessors for ptrace()
+    #[cfg(feature = "ptrace")]
     pub fn ptrace() -> &'static   Accessors {
         unsafe { &*(&_UPT_accessors as *const unw_accessors_t as *const Accessors) }
     }
@@ -187,6 +188,7 @@ impl CoredumpState {
     }
 }
 
+#[cfg(feature = "ptrace")]
 foreign_type! { 
     ///This state is used by accessors 
     pub unsafe type PtraceState {
@@ -195,6 +197,7 @@ foreign_type! {
     }
 }
 
+#[cfg(feature = "ptrace")]
 impl PtraceState {
     /// Method constructs constructs new CoredumpState from path to core file.  
     /// # Arguments
@@ -262,6 +265,7 @@ impl Cursor {
     /// * `address_space` - configured AddressSpace 
     ///
     /// * `state` - Configured CoredumpState
+    #[cfg(feature = "ptrace")]
     pub fn ptrace(address_space: &mut AddressSpace, state: &PtraceState) -> Result<Cursor, Error> {
         unsafe {
             let mut cursor = MaybeUninit::uninit();
@@ -526,7 +530,7 @@ mod tests {
     }
     
     #[test]
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", feature = "ptrace"))]
     fn test_remote_unwind() {
         use std::process::Command;
         use libc::c_void;
