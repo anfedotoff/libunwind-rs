@@ -2,12 +2,12 @@
 //!
 //! `libunwind-rs`  is a library providing safe Rust API for retrieving backtrace from local and
 //! remote process, and also from coredumps. Crate is build on a top of [libunwind] library.
-//! 
+//!
 //! [libunwind]: http://www.nongnu.org/libunwind/
 extern crate num_derive;
 
 use libunwind_sys::*;
-use std::fmt; 
+use std::fmt;
 use std::ffi::CStr;
 use foreign_types::{foreign_type, ForeignType};
 use std::path::Path;
@@ -17,33 +17,33 @@ use libc::{c_void, c_char, c_ulong};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-/// Error codes.  The unwind routines return the *negated* values of 
+/// Error codes.  The unwind routines return the *negated* values of
 /// these error codes on error and a non-negative value on success.
 #[derive(Copy, Clone, Debug, PartialEq, Eq,FromPrimitive)]
  pub enum Error {
-    ///no error 
+    ///no error
     Succsess = 0,
-    /// unspecified (general) error 
-    Unspec  = -1,        
-    /// out of memory 
-    NoMem  = -2,     
-    /// bad register number 
-    BadReg = -3, 
-    /// attempt to write read-only register 
-    ReadOnlyReg = -4,  
-    /// stop unwinding       
-    StopUnwind  = -5, 
-    /// invalid IP 
-    InvalidIp = -6, 
-    ///bad frame 
-    BadFrame = -7,  
-    /// unsupported operation or bad value 
-    InVal = -8, 
-    /// unwind info has unsupported version 
-    BadVersion = -9,  
-    /// no unwind info found   
-    NoInfo = -10         
-}    
+    /// unspecified (general) error
+    Unspec  = -1,
+    /// out of memory
+    NoMem  = -2,
+    /// bad register number
+    BadReg = -3,
+    /// attempt to write read-only register
+    ReadOnlyReg = -4,
+    /// stop unwinding
+    StopUnwind  = -5,
+    /// invalid IP
+    InvalidIp = -6,
+    ///bad frame
+    BadFrame = -7,
+    /// unsupported operation or bad value
+    InVal = -8,
+    /// unwind info has unsupported version
+    BadVersion = -9,
+    /// no unwind info found
+    NoInfo = -10
+}
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -78,7 +78,7 @@ pub enum Byteorder {
     PdpEndian = 3412
 }
 
-foreign_type! { 
+foreign_type! {
 /// Struct represents an address space of unwinding procces
     pub unsafe type AddressSpace  {
         type CType = libunwind_sys::unw_addr_space;
@@ -87,7 +87,7 @@ foreign_type! {
 }
 
 impl AddressSpace {
-    /// Method constructs `AddressSpace` from given accessors and byteorder 
+    /// Method constructs `AddressSpace` from given accessors and byteorder
     /// # Arguments
     ///
     /// * `accessors` - Bunch of Accessors functions (Ptrace, Coredump)
@@ -108,8 +108,8 @@ impl AddressSpace {
     }
 }
 
-foreign_type! { 
-    ///This state is used by accessors 
+foreign_type! {
+    ///This state is used by accessors
     pub unsafe type CoredumpState {
         type CType = libunwind_sys::UCD_info;
         fn drop = _UCD_destroy;
@@ -117,7 +117,7 @@ foreign_type! {
 }
 
 impl CoredumpState {
-    /// Method constructs new CoredumpState from path to core file.  
+    /// Method constructs new CoredumpState from path to core file.
     /// # Arguments
     ///
     /// * `accessors` - Bunch of Accessors functions (Ptrace, Coredump)
@@ -134,8 +134,8 @@ impl CoredumpState {
             }
         }
     }
-    
-    /// Method maps executable to specified  virtual address.  
+
+    /// Method maps executable to specified  virtual address.
     /// # Arguments
     ///
     /// * `file_path` - path to executable
@@ -153,7 +153,7 @@ impl CoredumpState {
             _UCD_get_pid(self.0.as_ptr())
          }
     }
-    /// Method returns  the number of threads 
+    /// Method returns  the number of threads
     pub fn num_threads(&mut self) -> i32 {
         unsafe {
             _UCD_get_num_threads(self.0.as_ptr())
@@ -173,7 +173,7 @@ impl CoredumpState {
     /// # Arguments
     ///
     /// * `asp` - AddressSpace struct
-    /// 
+    ///
     /// * `address` - memory address to access
     pub fn access_mem(&mut self, asp: &AddressSpace, address: usize) -> Result<usize, Error> {
         unsafe {
@@ -189,8 +189,8 @@ impl CoredumpState {
 }
 
 #[cfg(feature = "ptrace")]
-foreign_type! { 
-    ///This state is used by accessors 
+foreign_type! {
+    ///This state is used by accessors
     pub unsafe type PtraceState {
         type CType = libc::c_void;
         fn drop = _UPT_destroy;
@@ -199,7 +199,7 @@ foreign_type! {
 
 #[cfg(feature = "ptrace")]
 impl PtraceState {
-    /// Method constructs constructs new CoredumpState from path to core file.  
+    /// Method constructs constructs new CoredumpState from path to core file.
     /// # Arguments
     ///
     /// * `pid` - Pid for remote proccess
@@ -219,28 +219,28 @@ impl PtraceState {
 #[derive(Clone, Copy)]
 pub struct ProcInfo {
     start_ip: usize,
-    end_ip: usize 
+    end_ip: usize
 }
 
 impl ProcInfo {
     ///Method returns start address of procedure
     pub fn start(&self) -> usize {
-        self.start_ip 
+        self.start_ip
     }
 
     ///Method returns end address of procedure
     pub fn end(&self) -> usize {
-        self.end_ip 
+        self.end_ip
     }
 }
 
 #[derive(Clone)]
 pub struct Cursor(unw_cursor_t);
 impl Cursor {
-    /// Method constructs cursor for coredump unwinding.  
+    /// Method constructs cursor for coredump unwinding.
     /// # Arguments
     ///
-    /// * `address_space` - configured AddressSpace 
+    /// * `address_space` - configured AddressSpace
     ///
     /// * `state` - Configured CoredumpState
     pub fn coredump(address_space: &mut AddressSpace, state: &CoredumpState) -> Result<Cursor, Error> {
@@ -258,11 +258,11 @@ impl Cursor {
             }
         }
     }
-    
-    /// Method constructs cursor for remote  unwinding.  
+
+    /// Method constructs cursor for remote  unwinding.
     /// # Arguments
     ///
-    /// * `address_space` - configured AddressSpace 
+    /// * `address_space` - configured AddressSpace
     ///
     /// * `state` - Configured CoredumpState
     #[cfg(feature = "ptrace")]
@@ -282,10 +282,10 @@ impl Cursor {
         }
     }
 
-    /// Method constructs cursor for local  unwinding.  
+    /// Method constructs cursor for local  unwinding.
     /// # Arguments
     ///
-    /// * `f` - function to work with local cursor 
+    /// * `f` - function to work with local cursor
     pub fn local<F, T>(f: F) -> Result<T, Error>
     where
         F: FnOnce(Cursor) -> Result<T, Error>,
@@ -308,7 +308,7 @@ impl Cursor {
         }
     }
 
-    /// Method executes step on cursor.  
+    /// Method executes step on cursor.
     /// # Return
     ///
     /// * `true`  - if step is executed
@@ -328,8 +328,8 @@ impl Cursor {
             }
         }
     }
-    
-    /// Method returns register value  
+
+    /// Method returns register value
     /// # Arguments
     ///
     /// * `id`  - register's identifier
@@ -344,8 +344,8 @@ impl Cursor {
             }
         }
     }
-    
-    /// Method returns instructions pointer value 
+
+    /// Method returns instructions pointer value
     pub fn ip(&mut self) ->  Result<usize, Error> {
         unsafe {
             let mut value = 0;
@@ -357,8 +357,8 @@ impl Cursor {
             }
         }
     }
-    
-    /// Method returns stack pointer value 
+
+    /// Method returns stack pointer value
     pub fn sp(&mut self) ->  Result<usize, Error> {
         unsafe {
             let mut value = 0;
@@ -387,7 +387,7 @@ impl Cursor {
             }
         }
     }
-    
+
     /// Method returns procedure information at crurrent stack frame
     pub fn proc_name(&mut self) -> Result<String, Error> {
         unsafe {
@@ -402,7 +402,7 @@ impl Cursor {
             }
         }
     }
-    
+
     /// Method returns true if frame is signal frame
     pub fn is_signal_frame(&mut self) -> Result<bool, Error> {
         unsafe {
@@ -431,15 +431,15 @@ mod tests {
         core_path_buf.push("data/core.test_callstack");
         let test_callstack_start:usize = 0x400000;
         let libc_start:usize = 0x00007f9ac7468000;
-   
+
         let mut  state = CoredumpState::new(&core_path_buf).unwrap();
         state.load_file_at_vaddr(&test_callstack_path_buf, test_callstack_start);
         state.load_file_at_vaddr(&libc_path_buf, libc_start);
         let mut address_space = AddressSpace::new(Accessors::coredump(), Byteorder::Default).unwrap();
         let mut  cursor = Cursor::coredump(&mut address_space, &state).unwrap();
-        
+
         let mut backtrace = String::new();
-        loop { 
+        loop {
             let  ip = cursor.ip().unwrap();
             let sp = cursor.sp().unwrap();
             if let Err(_e) = state.access_mem(&address_space, sp) {
@@ -469,15 +469,15 @@ mod tests {
         core_path_buf.push("data/core.test_heapError");
         let test_heap_start:usize = 0x000055b7b218c000;
         let libc_start:usize = 0x00007f90e058b000;
-        
+
         let mut  state = CoredumpState::new(&core_path_buf).unwrap();
         state.load_file_at_vaddr(&test_heap_path_buf, test_heap_start);
         state.load_file_at_vaddr(&libc_path_buf, libc_start);
         let mut address_space = AddressSpace::new(Accessors::coredump(), Byteorder::Default).unwrap();
         let mut  cursor = Cursor::coredump(&mut address_space, &state).unwrap();
-        
+
         let mut backtrace = String::new();
-        loop { 
+        loop {
             let  ip = cursor.ip().unwrap();
             let sp = cursor.sp().unwrap();
             if let Err(_e) = state.access_mem(&address_space, sp) {
@@ -489,7 +489,7 @@ mod tests {
             if ret == false  {
                 break;
             }
-        }   
+        }
         assert!(backtrace.contains("main"), true);
         assert!(backtrace.contains("cfree"), true);
     }
@@ -510,9 +510,9 @@ mod tests {
         state.load_file_at_vaddr(&libc_path_buf, libc_start);
         let mut address_space = AddressSpace::new(Accessors::coredump(), Byteorder::Default).unwrap();
         let mut  cursor = Cursor::coredump(&mut address_space, &state).unwrap();
-        
+
         let mut backtrace = String::new();
-        loop { 
+        loop {
             let  ip = cursor.ip().unwrap();
             let sp = cursor.sp().unwrap();
             if let Err(_e) = state.access_mem(&address_space, sp) {
@@ -524,11 +524,11 @@ mod tests {
             if ret == false  {
                 break;
             }
-        }   
+        }
         assert!(backtrace.contains("main"), true);
         assert!(backtrace.contains("fortify_fail"), true);
     }
-    
+
     #[test]
     #[cfg(all(target_arch = "x86_64", feature = "ptrace"))]
     fn test_remote_unwind() {
@@ -538,7 +538,7 @@ mod tests {
         use std::thread;
         use std::time::Duration;
         use std::io;
-        
+
         let mut test_callstack_path_buf  = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_callstack_path_buf.push("data/test_callstack_remote");
         let mut child = Command::new(test_callstack_path_buf.to_str().unwrap())
@@ -569,9 +569,9 @@ mod tests {
         let state = PtraceState::new(child.id()).unwrap();
         let mut address_space = AddressSpace::new(Accessors::ptrace(), Byteorder::Default).unwrap();
         let mut  cursor = Cursor::ptrace(&mut address_space, &state).unwrap();
-        
+
         let mut backtrace = String::new();
-        loop { 
+        loop {
             let  ip = cursor.ip().unwrap();
             let  name = cursor.proc_name().unwrap();
             backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
@@ -579,7 +579,7 @@ mod tests {
             if ret == false  {
                 break;
             }
-        }   
+        }
         assert!(backtrace.contains("main"), true);
         assert!(backtrace.contains("first"), true);
         assert!(backtrace.contains("second"), true);
@@ -592,7 +592,7 @@ mod tests {
         let backtrace = Cursor::local(|mut cursor| {
 
         let mut backtrace = String::new();
-            loop { 
+            loop {
                 let  ip = cursor.ip().unwrap();
                 let  name = cursor.proc_name().unwrap();
                 backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
@@ -603,8 +603,8 @@ mod tests {
             }
         Ok(backtrace)
         }).unwrap();
-        
-        assert!(backtrace.contains("__rust_maybe_catch_panic"), true);
+
+        assert!(backtrace.contains("test_local_unwind"), true);
         assert!(backtrace.contains("start_thread") || backtrace.contains("start"), true);
     }
 }
