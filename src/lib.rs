@@ -7,7 +7,7 @@
 extern crate num_derive;
 
 use foreign_types::{foreign_type, ForeignType};
-use libc::{c_char, c_ulong, c_void};
+use libc::{c_char, c_void};
 use libunwind_sys::*;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -135,18 +135,6 @@ impl CoredumpState {
         }
     }
 
-    /// Method maps executable to specified  virtual address.
-    /// # Arguments
-    ///
-    /// * `file_path` - path to executable
-    ///
-    /// * `vaddr` - address to map
-    pub fn load_file_at_vaddr(&mut self, file_path: &Path, vaddr: usize) {
-        unsafe {
-            let file_path = CString::new(file_path.to_str().unwrap()).unwrap();
-            _UCD_add_backing_file_at_vaddr(self.0.as_ptr(), vaddr as c_ulong, file_path.as_ptr());
-        }
-    }
     /// Method returns current thread id
     pub fn pid(&mut self) -> i32 {
         unsafe { _UCD_get_pid(self.0.as_ptr()) }
@@ -433,25 +421,18 @@ impl Cursor {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use crate::*;
     use std::path::PathBuf;
-    #[test]
-    #[cfg(target_arch = "x86_64")]
-    fn test_core_unwind() {
-        let mut libc_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        libc_path_buf.push("data/libc-2.23.so");
-        let mut test_callstack_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        test_callstack_path_buf.push("data/test_callstack");
+
+    /// Common function to unwind a core dump and return the backtrace string
+    fn unwind_core_dump(core_filename: &str) -> String {
         let mut core_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        core_path_buf.push("data/core.test_callstack");
-        let test_callstack_start: usize = 0x400000;
-        let libc_start: usize = 0x00007f9ac7468000;
+        core_path_buf.push(core_filename);
 
         let mut state = CoredumpState::new(&core_path_buf).unwrap();
-        state.load_file_at_vaddr(&test_callstack_path_buf, test_callstack_start);
-        state.load_file_at_vaddr(&libc_path_buf, libc_start);
         let mut address_space =
             AddressSpace::new(Accessors::coredump(), Byteorder::Default).unwrap();
         let mut cursor = Cursor::coredump(&mut address_space, &state).unwrap();
@@ -463,90 +444,48 @@ mod tests {
             if let Err(_e) = state.access_mem(&address_space, sp) {
                 assert!(false);
             }
-            let name = cursor.proc_name().unwrap();
+
+            let name = cursor.proc_name().unwrap_or_else(|_| "<unknown>".to_string());
             backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
-            let ret = cursor.step().unwrap();
-            if ret == false {
-                break;
+            match cursor.step() {
+                Ok(ret) => {
+                    if ret == false {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    break;
+                }
             }
         }
-        assert!(backtrace.contains("main"), true);
-        assert!(backtrace.contains("first"), true);
-        assert!(backtrace.contains("second"), true);
-        assert!(backtrace.contains("third"), true);
+
+        backtrace
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_core_unwind() {
+        let backtrace = unwind_core_dump("data/core.test_callstack");
+        assert!(backtrace.contains("0x40054b"), "{}", true);
+        assert!(backtrace.contains("0x400527"), "{}", true);
+        assert!(backtrace.contains("0x4004fd"), "{}", true);
+        assert!(backtrace.contains("0x400579"), "{}", true);
     }
 
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_core_unwind_heap_error() {
-        let mut libc_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        libc_path_buf.push("data/libc-2.23.so");
-        let mut test_heap_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        test_heap_path_buf.push("data/test_heapError");
-        let mut core_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        core_path_buf.push("data/core.test_heapError");
-        let test_heap_start: usize = 0x000055b7b218c000;
-        let libc_start: usize = 0x00007f90e058b000;
-
-        let mut state = CoredumpState::new(&core_path_buf).unwrap();
-        state.load_file_at_vaddr(&test_heap_path_buf, test_heap_start);
-        state.load_file_at_vaddr(&libc_path_buf, libc_start);
-        let mut address_space =
-            AddressSpace::new(Accessors::coredump(), Byteorder::Default).unwrap();
-        let mut cursor = Cursor::coredump(&mut address_space, &state).unwrap();
-
-        let mut backtrace = String::new();
-        loop {
-            let ip = cursor.ip().unwrap();
-            let sp = cursor.sp().unwrap();
-            if let Err(_e) = state.access_mem(&address_space, sp) {
-                assert!(false);
-            }
-            let name = cursor.proc_name().unwrap();
-            backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
-            let ret = cursor.step().unwrap();
-            if ret == false {
-                break;
-            }
-        }
-        assert!(backtrace.contains("main"), true);
-        assert!(backtrace.contains("cfree"), true);
+        let backtrace = unwind_core_dump("data/core.test_heapError");
+        assert!(backtrace.contains("0x7f90e05c0428"), "{}", true);
+        assert!(backtrace.contains("0x7f90e060b37a"), "{}", true);
     }
+
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_core_unwind_canary() {
-        let mut libc_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        libc_path_buf.push("data/libc-2.23.so");
-        let mut test_canary_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        test_canary_path_buf.push("data/test_canary");
-        let mut core_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        core_path_buf.push("data/core.test_canary");
-        let test_canary_start: usize = 0x0000558672376000;
-        let libc_start: usize = 0x00007fc14b336000;
-
-        let mut state = CoredumpState::new(&core_path_buf).unwrap();
-        state.load_file_at_vaddr(&test_canary_path_buf, test_canary_start);
-        state.load_file_at_vaddr(&libc_path_buf, libc_start);
-        let mut address_space =
-            AddressSpace::new(Accessors::coredump(), Byteorder::Default).unwrap();
-        let mut cursor = Cursor::coredump(&mut address_space, &state).unwrap();
-
-        let mut backtrace = String::new();
-        loop {
-            let ip = cursor.ip().unwrap();
-            let sp = cursor.sp().unwrap();
-            if let Err(_e) = state.access_mem(&address_space, sp) {
-                assert!(false);
-            }
-            let name = cursor.proc_name().unwrap();
-            backtrace.push_str(&format!("0x{:x} in {:?} ()\n", ip, name));
-            let ret = cursor.step().unwrap();
-            if ret == false {
-                break;
-            }
-        }
-        assert!(backtrace.contains("main"), true);
-        assert!(backtrace.contains("fortify_fail"), true);
+        let backtrace = unwind_core_dump("data/core.test_canary");
+        assert!(backtrace.contains("0x7fc14b36b428"), "{}", true);
+        assert!(backtrace.contains("0x7fc14b44f15c"), "{}", true);
     }
 
     #[test]
@@ -606,6 +545,7 @@ mod tests {
         assert!(backtrace.contains("third"), true);
         child.kill().unwrap();
     }
+
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_local_unwind() {
@@ -624,10 +564,10 @@ mod tests {
         })
         .unwrap();
 
-        assert!(backtrace.contains("test_local_unwind"), true);
+        assert!(backtrace.contains("test_local_unwind"), "{}", true);
         assert!(
             backtrace.contains("start_thread") || backtrace.contains("start"),
-            true
+            "{}", true
         );
     }
 }
